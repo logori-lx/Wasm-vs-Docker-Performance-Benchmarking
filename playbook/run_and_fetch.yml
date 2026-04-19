@@ -1,0 +1,13 @@
+---
+- name: run_script_and_fetch_output
+  hosts: aws1 # set this field the host name of remote machine you want to login 
+  tasks:
+    - name: run_script_and_output
+      script: ./test.sh
+      register: script_output  # to redirect the output to variable script_output 
+
+    - name: redirect_the_output_to_file_and_fetch_the_file
+      copy:
+        content: "{{ script_output.stdout }}"
+        dest: "./result_{{ inventory_hostname }}.txt"  
+      delegate_to: localhost 
