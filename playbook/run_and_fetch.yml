@@ -1,13 +1,98 @@
 ---
-- name: run_script_and_fetch_output
-  hosts: aws1 # set this field the host name of remote machine you want to login 
+- name: server_benchmark_pipeline
+  hosts: aws1
   tasks:
-    - name: run_script_and_output
-      script: ./test.sh
-      register: script_output  # to redirect the output to variable script_output 
+    # function 1: init remote environment (Tags: init)
+    - name: copy_init_script_to_remote
+      ansible.builtin.copy:
+        src: ../bench/init_remote.bash
+        dest: ~/bench/
+        mode: '0755'
+      tags: init  
 
-    - name: redirect_the_output_to_file_and_fetch_the_file
-      copy:
-        content: "{{ script_output.stdout }}"
-        dest: "./result_{{ inventory_hostname }}.txt"  
-      delegate_to: localhost 
+    - name: run_init_script_on_remote
+      ansible.builtin.shell: ./init_remote.bash
+      args:
+        chdir: ~/bench/
+        executable: /bin/bash
+      tags: init 
+
+    # distribute bench files to remote (Tags: bench_cli, bench_web)
+    - name: copy_bench_files_to_remote
+      ansible.builtin.copy:
+        src: ../bench/
+        dest: ~/bench/
+        mode: '0755'
+      tags: ['bench_cli', 'bench_web'] 
+
+    # function 2: execute CLI benchmark on remote (Tags: bench_cli)
+    - name: run_cli_benchmark_on_remote
+      ansible.builtin.shell: source $HOME/.wasmedge/env && python3 bench.py
+      args:
+        chdir: ~/bench/
+        executable: /bin/bash
+      register: cli_output 
+      tags: bench_cli  
+
+    - name: redirect_cli_output_to_file
+      ansible.builtin.copy:
+        content: |
+          [STDOUT]
+          {{ cli_output.stdout }}
+          
+          [STDERR]
+          {{ cli_output.stderr }}
+        dest: "../reports/result_cli_{{ inventory_hostname }}.txt" # 文件名加上 cli 区分
+      delegate_to: localhost
+      tags: bench_cli  
+
+    - name: find_the_generated_cli_csv_file
+      ansible.builtin.find:
+        paths: ~/bench/                            
+        patterns: "performance_comparison_*.csv"   
+      register: found_cli_csv_files
+      tags: bench_cli
+
+    - name: fetch_all_found_cli_csv_files_to_local
+      ansible.builtin.fetch:
+        src: "{{ item.path }}"                     
+        dest: "../reports/"
+        flat: true
+      loop: "{{ found_cli_csv_files.files }}" 
+      tags: bench_cli
+
+    # function 3: execute web benchmark on remote (Tags: bench_web)
+    - name: run_web_benchmark_on_remote
+      ansible.builtin.shell: source $HOME/.wasmedge/env && python3 web_bench.py
+      args:
+        chdir: ~/bench/
+        executable: /bin/bash
+      register: web_output # 使用独立的 web_output 变量
+      tags: bench_web
+
+    - name: redirect_web_output_to_file
+      ansible.builtin.copy:
+        content: |
+          [STDOUT]
+          {{ web_output.stdout }}
+          
+          [STDERR]
+          {{ web_output.stderr }}
+        dest: "../reports/result_web_{{ inventory_hostname }}.txt" # 文件名加上 web 区分
+      delegate_to: localhost
+      tags: bench_web
+
+    - name: find_the_generated_web_csv_file
+      ansible.builtin.find:
+        paths: ~/bench/
+        patterns: "web_performance_comparison_*.csv" # 匹配 Web 脚本生成的专门前缀
+      register: found_web_csv_files
+      tags: bench_web
+
+    - name: fetch_all_found_web_csv_files_to_local
+      ansible.builtin.fetch:
+        src: "{{ item.path }}"
+        dest: "../reports/"
+        flat: true
+      loop: "{{ found_web_csv_files.files }}"
+      tags: bench_web

@@ -1,4 +1,4 @@
-## 📊 Performance Benchmarking Metrics
+## Performance Benchmarking Metrics
 
 The following metrics are used to compare **WasmEdge** and **Docker** across various **AWS EC2 instance types**. Our evaluation focuses on cold start latency, memory footprint, and throughput.
 
@@ -16,9 +16,35 @@ The following metrics are used to compare **WasmEdge** and **Docker** across var
 
 ---
 
-### 📝 Benchmarking Methodology
+### Benchmarking Methodology
 To ensure statistical significance and minimize noise in the AWS environment:
 1. **Warm-up**: We perform 5-10 "warm-up" runs before recording data to ensure the system is in a stable state.
 2. **Iterations**: Each test is repeated at least 100 times to calculate a reliable average.
 3. **Statistical Analysis**: We report the Mean, Median, and Standard Deviation to identify specific performance factors and outliers.
 4. **Environment Isolation**: Tests are conducted across multiple EC2 instance types to understand how performance scales with available CPU and memory resources.
+
+## Usage
+Build image
+```
+make build-all
+```
+
+Run benchmark locally
+```
+make bench-local-all
+```
+
+Run benchmark in cloud (Need to set the hosts info in playbook/hosts)
+```
+make bench-remote-all
+```
+
+Clean all the output file
+```
+make clean
+```
+
+For more infomation related to usage
+```
+make help
+```

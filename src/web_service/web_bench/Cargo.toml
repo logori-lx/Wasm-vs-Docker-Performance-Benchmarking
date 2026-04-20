@@ -1,0 +1,9 @@
+[package]
+name = "web_bench"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# 这种写法表示：只有目标平台是 wasm32 时才引入该库
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasmedge_wasi_socket = "0.5"
