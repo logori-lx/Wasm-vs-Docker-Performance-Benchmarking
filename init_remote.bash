@@ -13,8 +13,6 @@ source $HOME/.wasmedge/env
 
 # 4. install Rust environment
 sudo snap install rustup --classic
+rustup default stable
 rustup target add wasm32-wasip1
 
-# 5. load docker image for benchmark
-echo "--- Running Docker Benchmark ---"
-sudo docker load -i rsa_bench_docker.tar

@@ -1,98 +1,122 @@
 ---
 - name: server_benchmark_pipeline
   hosts: aws1
+  gather_facts: yes  # 建议开启，以便获取系统信息
+  vars:
+    local_report_dir: "../reports"
+    remote_bench_dir: "~/bench"
+
   tasks:
-    # function 1: init remote environment (Tags: init)
-    - name: copy_init_script_to_remote
-      ansible.builtin.copy:
-        src: ../bench/init_remote.bash
-        dest: ~/bench/
-        mode: '0755'
-      tags: init  
+    # --- 准备阶段 ---
+    - name: clean_old_reports_on_remote
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ remote_bench_dir }}/performance_comparison_*.csv"
+        - "{{ remote_bench_dir }}/web_performance_comparison_*.csv"
+      tags: ['bench_cli', 'bench_web']
+      ignore_errors: yes
 
-    - name: run_init_script_on_remote
-      ansible.builtin.shell: ./init_remote.bash
-      args:
-        chdir: ~/bench/
-        executable: /bin/bash
-      tags: init 
-
-    # distribute bench files to remote (Tags: bench_cli, bench_web)
-    - name: copy_bench_files_to_remote
+    - name: synchronize_bench_files
       ansible.builtin.copy:
         src: ../bench/
-        dest: ~/bench/
+        dest: "{{ remote_bench_dir }}/"
         mode: '0755'
-      tags: ['bench_cli', 'bench_web'] 
+      tags: ['init', 'bench_cli', 'bench_web']
 
-    # function 2: execute CLI benchmark on remote (Tags: bench_cli)
-    - name: run_cli_benchmark_on_remote
+    - name: run_init_script
+      ansible.builtin.shell: ./init_remote.bash
+      args:
+        chdir: "{{ remote_bench_dir }}"
+        executable: /bin/bash
+      tags: init
+  
+    - name: load_cli_docker_images
+      ansible.builtin.shell: "sudo docker load -i {{ item }}"
+      args:
+        chdir: "{{ remote_bench_dir }}"
+      loop:
+        - "rsa_bench_docker.tar"
+      tags: ['bench_cli']
+  
+    - name: load_web_docker_images
+      ansible.builtin.shell: "sudo docker load -i {{ item }}"
+      args:
+        chdir: "{{ remote_bench_dir }}"
+      loop:
+        - "web_bench_docker.tar"
+      tags: ['bench_web']
+    # --- CLI Benchmark ---
+    - name: run_cli_benchmark
       ansible.builtin.shell: source $HOME/.wasmedge/env && python3 bench.py
       args:
-        chdir: ~/bench/
+        chdir: "{{ remote_bench_dir }}"
         executable: /bin/bash
-      register: cli_output 
-      tags: bench_cli  
+      register: cli_output
+      tags: bench_cli
 
-    - name: redirect_cli_output_to_file
+    - name: save_cli_log_locally
       ansible.builtin.copy:
         content: |
           [STDOUT]
           {{ cli_output.stdout }}
-          
           [STDERR]
           {{ cli_output.stderr }}
-        dest: "../reports/result_cli_{{ inventory_hostname }}.txt" # 文件名加上 cli 区分
+        dest: "{{ local_report_dir }}/log_cli_{{ inventory_hostname }}.txt"
       delegate_to: localhost
-      tags: bench_cli  
+      tags: bench_cli
 
-    - name: find_the_generated_cli_csv_file
+    - name: find_cli_csv
       ansible.builtin.find:
-        paths: ~/bench/                            
-        patterns: "performance_comparison_*.csv"   
+        paths: "{{ remote_bench_dir }}"
+        patterns: "performance_comparison_*.csv"
       register: found_cli_csv_files
       tags: bench_cli
 
-    - name: fetch_all_found_cli_csv_files_to_local
+    - name: fetch_cli_csv_to_local
       ansible.builtin.fetch:
-        src: "{{ item.path }}"                     
-        dest: "../reports/"
-        flat: true
-      loop: "{{ found_cli_csv_files.files }}" 
+        src: "{{ item.path }}"
+        # 关键修改：文件名加上主机名，防止多台机器传输时 checksum 冲突
+        dest: "{{ local_report_dir }}/{{ inventory_hostname }}_{{ item.path | basename }}"
+        flat: yes
+      loop: "{{ found_cli_csv_files.files }}"
       tags: bench_cli
 
-    # function 3: execute web benchmark on remote (Tags: bench_web)
-    - name: run_web_benchmark_on_remote
+    # --- Web Benchmark ---
+    - name: run_web_benchmark
+      # 注意：针对 Connection Refused，如果 Python 脚本内部没有 retry，
+      # 可以在这里尝试多次运行，或者在脚本启动 Docker 后加一个 sleep。
       ansible.builtin.shell: source $HOME/.wasmedge/env && python3 web_bench.py
       args:
-        chdir: ~/bench/
+        chdir: "{{ remote_bench_dir }}"
         executable: /bin/bash
-      register: web_output # 使用独立的 web_output 变量
+      register: web_output
       tags: bench_web
 
-    - name: redirect_web_output_to_file
+    - name: save_web_log_locally
       ansible.builtin.copy:
         content: |
           [STDOUT]
           {{ web_output.stdout }}
-          
           [STDERR]
           {{ web_output.stderr }}
-        dest: "../reports/result_web_{{ inventory_hostname }}.txt" # 文件名加上 web 区分
+        dest: "{{ local_report_dir }}/log_web_{{ inventory_hostname }}.txt"
       delegate_to: localhost
       tags: bench_web
 
-    - name: find_the_generated_web_csv_file
+    - name: find_web_csv
       ansible.builtin.find:
-        paths: ~/bench/
-        patterns: "web_performance_comparison_*.csv" # 匹配 Web 脚本生成的专门前缀
+        paths: "{{ remote_bench_dir }}"
+        patterns: "web_performance_comparison_*.csv"
       register: found_web_csv_files
       tags: bench_web
 
-    - name: fetch_all_found_web_csv_files_to_local
+    - name: fetch_web_csv_to_local
       ansible.builtin.fetch:
         src: "{{ item.path }}"
-        dest: "../reports/"
-        flat: true
+        # 关键修改：加上主机名防止冲突
+        dest: "{{ local_report_dir }}/{{ inventory_hostname }}_{{ item.path | basename }}"
+        flat: yes
       loop: "{{ found_web_csv_files.files }}"
       tags: bench_web

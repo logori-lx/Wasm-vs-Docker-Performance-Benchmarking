@@ -122,7 +122,6 @@ def average_metrics(metrics_list):
 
 if __name__ == "__main__":
     print(f"Starting WEB Server Performance Benchmark ({NUM_RUNS} Runs)...\n")
-
     docker_runs_data = []
     wasm_runs_data = []
 
@@ -137,13 +136,13 @@ if __name__ == "__main__":
         docker_log, docker_rps = run_web_benchmark('Docker', docker_cmd, i, NUM_RUNS)
         docker_metrics = extract_metrics(docker_log, docker_rps, is_docker=True)
         docker_runs_data.append(docker_metrics)
-        time.sleep(2) # Buffer time to ensure the port is completely released
-        
+        time.sleep(5) # Buffer time to ensure the port is completely released
+
         # 2. Run WasmEdge
         wasm_log, wasm_rps = run_web_benchmark('WasmEdge', wasm_cmd, i, NUM_RUNS)
         wasm_metrics = extract_metrics(wasm_log, wasm_rps, is_docker=False)
         wasm_runs_data.append(wasm_metrics)
-        time.sleep(2) 
+        time.sleep(5) 
         
         print(f"Iteration {i} completed.\n")
 
@@ -187,5 +186,5 @@ if __name__ == "__main__":
         writer.writerows(rows)
     import shutil
     shutil.copyfile(csv_filename, "latest_web_report.csv")
-
+    
     print(f"\nAveraged data successfully exported to '{csv_filename}'. Ready for plotting!")
