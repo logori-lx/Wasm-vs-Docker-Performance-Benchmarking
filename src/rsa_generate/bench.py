@@ -2,6 +2,7 @@ import subprocess
 import re
 import csv
 import sys
+import os  # 新增：用于检查 Wasm 文件是否存在，并读取文件大小
 
 # ==========================================
 # Configuration Parameters
@@ -9,6 +10,39 @@ import sys
 NUM_RUNS = 1                           # the number of experiment runs here
 DOCKER_IMAGE_NAME = "rsa_bench_docker" # Your Docker image name
 WASM_FILE_PATH = "rsa_bench.wasm"      # Your Wasm file path
+
+# 负责读取 .wasm 文件大小，并统一转换成 MB
+def get_wasm_file_size_mb(file_path):
+    if not os.path.exists(file_path):
+        print(f"Error: Wasm file '{file_path}' not found.")
+        sys.exit(1)
+    size_bytes = os.path.getsize(file_path)
+    return size_bytes / (1024 * 1024)
+
+# 负责读取 Docker image 的大小，并统一转换成 MB
+def get_docker_image_size_mb(image_name):
+    try:
+        result = subprocess.run(
+            ['sudo', 'docker', 'image', 'inspect', image_name, '--format', '{{.Size}}'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False
+        )
+
+        if result.returncode != 0:
+            print(f"Error: Failed to inspect Docker image '{image_name}'.")
+            print(result.stderr)
+            sys.exit(1)
+
+        size_bytes = int(result.stdout.strip())
+        return size_bytes / (1024 * 1024)
+
+    except ValueError:
+        print(f"Error: Unable to parse Docker image size for '{image_name}'.")
+        print("Raw output:", result.stdout)
+        sys.exit(1)
+
 
 # --- 1. Execute system native commands and merge captured output ---
 def run_benchmark_command(env_name, command_list, run_index, total_runs):
@@ -51,6 +85,9 @@ def extract_metrics(log_text, is_docker=False):
         metrics['User_Time_s'] = float(re.search(r"User time \(seconds\):\s*([\d.]+)", log_text).group(1))
         metrics['Sys_Time_s'] = float(re.search(r"System time \(seconds\):\s*([\d.]+)", log_text).group(1))
         
+        # 新增：从 /usr/bin/time -v 输出中提取 CPU 使用百分比
+        metrics['CPU_Util_Percent'] = float(re.search(r"Percent of CPU this job got:\s*(\d+)%", log_text).group(1))
+
         elapsed_raw = re.search(r"Elapsed \(wall clock\) time .*?:\s*(.+)", log_text).group(1)
         metrics['Elapsed_s'] = parse_time_to_seconds(elapsed_raw)
         
@@ -120,11 +157,15 @@ if __name__ == "__main__":
     docker_avg = average_metrics(docker_runs_data)
     wasm_avg = average_metrics(wasm_runs_data)
 
+    docker_image_size_mb = get_docker_image_size_mb(DOCKER_IMAGE_NAME)   # 新增：在所有 benchmark 完成后，单独获取静态大小指标
+    wasm_binary_size_mb = get_wasm_file_size_mb(WASM_FILE_PATH)
+
     # Print report
     print("="*65)
     print(f"PROJECT 5296: PERFORMANCE BENCHMARK REPORT (AVG OF {NUM_RUNS} RUNS)")
     print("="*65)
     
+    # 新增：在终端打印的 markdown 报告中加入 Binary/Image Size和CPU Utilization 指标
     report_md = f"""
 | Metric | Docker (Native) | WasmEdge (Interpreted) | Unit |
 | :--- | :--- | :--- | :--- |
@@ -132,6 +173,8 @@ if __name__ == "__main__":
 | **Inner Env Overhead** | {docker_avg['Inner_Cold_Start_s']:.4f} | {wasm_avg['Inner_Cold_Start_s']:.4f} | Seconds |
 | **System Overhead** | {docker_avg['Sys_Time_s']:.4f} | {wasm_avg['Sys_Time_s']:.4f} | Seconds |
 | **Peak Memory Footprint**| {docker_avg['Peak_Memory_MB']:.2f} | {wasm_avg['Peak_Memory_MB']:.2f} | MB |
+| **Binary/Image Size** | {docker_image_size_mb:.2f} | {wasm_binary_size_mb:.2f} | MB |   
+| **CPU Utilization** | {docker_avg['CPU_Util_Percent']:.1f} | {wasm_avg['CPU_Util_Percent']:.1f} | % |   
 | **Minor Page Faults** | {docker_avg['Minor_Page_Faults']:.1f} | {wasm_avg['Minor_Page_Faults']:.1f} | Count |
 | **Context Switches** | {docker_avg['Vol_Ctx_Switches']:.1f} | {wasm_avg['Vol_Ctx_Switches']:.1f} | Count |
 
@@ -140,7 +183,7 @@ if __name__ == "__main__":
     print(report_md.strip())
     print("\n" + "="*65)
 
-    # Export to CSV for plotting
+    # Export to CSV for plotting   # 新增：将 Binary/Image Size 和 CPU Utilization写入 CSV，便于后续画图和汇总分析 
     csv_filename = f"performance_comparison_{NUM_RUNS}_runs_avg.csv"
     fields = ['Metric', 'Docker_Avg', 'WasmEdge_Avg', 'Unit']
     rows = [
@@ -148,6 +191,8 @@ if __name__ == "__main__":
         ['Inner Overhead', round(docker_avg['Inner_Cold_Start_s'], 4), round(wasm_avg['Inner_Cold_Start_s'], 4), 'Seconds'],
         ['System Time', round(docker_avg['Sys_Time_s'], 4), round(wasm_avg['Sys_Time_s'], 4), 'Seconds'],
         ['Peak Memory', round(docker_avg['Peak_Memory_MB'], 2), round(wasm_avg['Peak_Memory_MB'], 2), 'MB'],
+        ['Binary/Image Size', round(docker_image_size_mb, 2), round(wasm_binary_size_mb, 2), 'MB'],
+        ['CPU Utilization', round(docker_avg['CPU_Util_Percent'], 1), round(wasm_avg['CPU_Util_Percent'], 1), '%'],
         ['Minor Page Faults', round(docker_avg['Minor_Page_Faults'], 1), round(wasm_avg['Minor_Page_Faults'], 1), 'Count'],
         ['Context Switches', round(docker_avg['Vol_Ctx_Switches'], 1), round(wasm_avg['Vol_Ctx_Switches'], 1), 'Count']
     ]
