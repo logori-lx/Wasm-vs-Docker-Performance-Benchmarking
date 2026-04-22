@@ -1,7 +1,7 @@
 ---
 - name: server_benchmark_pipeline
   hosts: aws1
-  gather_facts: yes  # 建议开启，以便获取系统信息
+  gather_facts: yes # 建议开启，以便获取系统信息
   vars:
     local_report_dir: "../reports"
     remote_bench_dir: "~/bench"
@@ -15,7 +15,8 @@
       loop:
         - "{{ remote_bench_dir }}/performance_comparison_*.csv"
         - "{{ remote_bench_dir }}/web_performance_comparison_*.csv"
-      tags: ['bench_cli', 'bench_web']
+        - "{{ remote_bench_dir }}/processing_rate_report.csv"
+      tags: ['bench_cli', 'bench_web', 'bench_processing_rate']
       ignore_errors: yes
 
     - name: synchronize_bench_files
@@ -23,7 +24,7 @@
         src: ../bench/
         dest: "{{ remote_bench_dir }}/"
         mode: '0755'
-      tags: ['init', 'bench_cli', 'bench_web']
+      tags: ['init', 'bench_cli', 'bench_web', 'bench_processing_rate']
 
     - name: run_init_script
       ansible.builtin.shell: ./init_remote.bash
@@ -31,7 +32,7 @@
         chdir: "{{ remote_bench_dir }}"
         executable: /bin/bash
       tags: init
-  
+
     - name: load_cli_docker_images
       ansible.builtin.shell: "sudo docker load -i {{ item }}"
       args:
@@ -39,7 +40,7 @@
       loop:
         - "rsa_bench_docker.tar"
       tags: ['bench_cli']
-  
+
     - name: load_web_docker_images
       ansible.builtin.shell: "sudo docker load -i {{ item }}"
       args:
@@ -47,6 +48,15 @@
       loop:
         - "web_bench_docker.tar"
       tags: ['bench_web']
+
+    - name: load_processing_rate_docker_images
+      ansible.builtin.shell: "sudo docker load -i {{ item }}"
+      args:
+        chdir: "{{ remote_bench_dir }}"
+      loop:
+        - "processing_rate_bench_docker.tar"
+      tags: ['bench_processing_rate']
+
     # --- CLI Benchmark ---
     - name: run_cli_benchmark
       ansible.builtin.shell: source $HOME/.wasmedge/env && python3 bench.py
@@ -120,3 +130,42 @@
         flat: yes
       loop: "{{ found_web_csv_files.files }}"
       tags: bench_web
+
+    # Processing Rate Benchmark
+    - name: run_processing_rate_benchmark
+      ansible.builtin.shell: source $HOME/.wasmedge/env && python3 processing_rate_bench.py
+      args:
+        chdir: "{{ remote_bench_dir }}"
+        executable: /bin/bash
+      register: processing_rate_output
+      tags: bench_processing_rate
+      retries: 3
+      delay: 10
+      until: processing_rate_output.rc == 0
+      ignore_errors: no
+
+    - name: save_processing_rate_log_locally
+      ansible.builtin.copy:
+        content: |
+          [STDOUT]
+          {{ processing_rate_output.stdout }}
+          [STDERR]
+          {{ processing_rate_output.stderr }}
+        dest: "{{ local_report_dir }}/log_processing_rate_{{ inventory_hostname }}.txt"
+      delegate_to: localhost
+      tags: bench_processing_rate
+
+    - name: find_processing_rate_csv
+      ansible.builtin.find:
+        paths: "{{ remote_bench_dir }}"
+        patterns: "processing_rate_report.csv"
+      register: found_processing_rate_csv_files
+      tags: bench_processing_rate
+
+    - name: fetch_processing_rate_csv_to_local
+      ansible.builtin.fetch:
+        src: "{{ item.path }}"
+        dest: "{{ local_report_dir }}/{{ inventory_hostname }}_{{ item.path | basename }}"
+        flat: yes
+      loop: "{{ found_processing_rate_csv_files.files }}"
+      tags: bench_processing_rate
