@@ -1,0 +1,7 @@
+metric,docker,wasmedge,unit
+throughput_RPS,171.5,1.7,Req/sec
+total_uptime,0.0,0.0,Seconds
+user_cpu_time,0.5,59.88,Seconds
+system_cpu_time,0.0,0.02,Seconds
+peak_memory,4.4,46.66,MB
+minor_page_faults,92.0,3214.0,Count

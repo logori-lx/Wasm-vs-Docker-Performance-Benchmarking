@@ -58,9 +58,6 @@ copy: build-all
 	@echo "=> Preparing $(WORK_DIR) directory..."
 	@if [ ! -d "$(WORK_DIR)" ]; then mkdir $(WORK_DIR); fi
 
-	# copy init script for cloud machines
-	cp init_remote.bash $(WORK_DIR)/init_remote.bash
-
 	# copy cli test related files
 	cp src/rsa_generate/bench.py $(WORK_DIR)/bench.py
 	cp $(CLI_DOCKER_IMAGE).tar $(WORK_DIR)/
@@ -77,6 +74,10 @@ copy: build-all
 
 # --- 3. Ansible 远程执行任务 (Remote Execute) ---
 init-remote:
+	@echo "=> Preparing $(WORK_DIR) directory..."
+	@if [ ! -d "$(WORK_DIR)" ]; then mkdir $(WORK_DIR); fi
+	# copy init script for cloud machines
+	cp init_remote.bash $(WORK_DIR)/init_remote.bash
 	@echo "=> Initializing remote environments..."
 	cd playbook && ansible-playbook -i hosts run_and_fetch.yml --tags "init"
 
@@ -155,7 +156,7 @@ clean:
 
 	rm -rf $(WORK_DIR)
 	rm -rf *.csv *.tar
-	rm -rf $(REPORTS_DIR)/*
+	rm -rf $(REPORTS_DIR)/*.txt
 
 	rm -f $(CLI_WASM_OUTPUT) $(WEB_WASM_OUTPUT) $(PR_WASM_OUTPUT)
 	rm -f $(CLI_DOCKER_IMAGE).tar $(WEB_DOCKER_IMAGE).tar $(PR_DOCKER_IMAGE).tar

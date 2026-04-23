@@ -1,0 +1,9 @@
+metric,docker,wasmedge,unit
+execution_time,0.1478,114.4355,Seconds
+inner_overhead,0.0,0.0,Seconds
+system_time,0.0,0.03,Seconds
+peak_memory,4.38,50.24,MB
+binary_or_image_size,27.28,0.29,MB
+cpu_utilization,97.5,99.0,%
+minor_page_faults,108.0,4192.0,Count
+context_switches,3.5,213.5,Count

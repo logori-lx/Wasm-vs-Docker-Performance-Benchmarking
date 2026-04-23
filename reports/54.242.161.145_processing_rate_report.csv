@@ -1,0 +1,4 @@
+metric,docker,wasmedge,unit
+processing_rate,0.0,1937803997991.5,ops/sec
+time_sec,0.01,0.028,sec
+memory_mb,26.23,47.57,MB
