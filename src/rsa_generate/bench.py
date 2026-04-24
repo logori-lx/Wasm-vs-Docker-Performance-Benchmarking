@@ -6,7 +6,7 @@ import os
 
 NUM_RUNS = 2
 DOCKER_IMAGE_NAME = "rsa_bench_docker"
-WASM_FILE_PATH = "rsa_bench.wasm"
+WASM_FILE_PATH = "rsa_bench_aot.wasm"
 
 def get_wasm_file_size_mb(file_path):
     if not os.path.exists(file_path):
@@ -77,6 +77,7 @@ def extract_metrics(log_text, is_docker=False):
         metrics['User_Time_s'] = float(re.search(r"User time \(seconds\):\s*([\d.]+)", log_text).group(1))
         metrics['Sys_Time_s'] = float(re.search(r"System time \(seconds\):\s*([\d.]+)", log_text).group(1))
         
+        # 新增：从 /usr/bin/time -v 输出中提取该任务执行期间的 CPU 使用百分比
         metrics['CPU_Util_Percent'] = float(re.search(r"Percent of CPU this job got:\s*(\d+)%", log_text).group(1))
 
         elapsed_raw = re.search(r"Elapsed \(wall clock\) time .*?:\s*(.+)", log_text).group(1)
@@ -116,6 +117,7 @@ def average_metrics(metrics_list):
         avg_metrics[key] = total / num_runs
         
     return avg_metrics
+
 
 if __name__ == "__main__":
     print(f"Starting End-to-End Performance Benchmark ({NUM_RUNS} Runs)...\n")

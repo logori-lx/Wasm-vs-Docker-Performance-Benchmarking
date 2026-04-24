@@ -8,7 +8,8 @@ REPORTS_DIR = reports
 CLI_DOCKER_IMAGE = rsa_bench_docker
 CLI_SRC_DIR = src/rsa_generate
 CLI_WASM_TARGET = ${CLI_SRC_DIR}/rsa_bench/target/wasm32-wasip1/release/rsa_bench.wasm
-CLI_WASM_OUTPUT = rsa_bench.wasm
+CLI_AOT_TARGET = ${CLI_SRC_DIR}/rsa_bench/target/wasm32-wasip1/release/rsa_bench_aot.wasm
+CLI_WASM_OUTPUT = rsa_bench_aot.wasm
 
 # WEB 相关变量
 WEB_DOCKER_IMAGE = web_bench_docker
@@ -38,6 +39,8 @@ build-cli:
 	docker save $(CLI_DOCKER_IMAGE) -o $(CLI_DOCKER_IMAGE).tar
 	@echo "=> Compiling CLI Rust to WASM..."
 	cd src/rsa_generate/rsa_bench && cargo build --target wasm32-wasip1 --release
+	@echo "=> AOT compiling CLI WASM with WasmEdge..."
+	wasmedge compile $(CLI_WASM_TARGET) $(CLI_AOT_TARGET)
 
 build-web:
 	@echo "=> Building WEB Docker image..."
@@ -61,7 +64,7 @@ copy: build-all
 	# copy cli test related files
 	cp src/rsa_generate/bench.py $(WORK_DIR)/bench.py
 	cp $(CLI_DOCKER_IMAGE).tar $(WORK_DIR)/
-	cp $(CLI_WASM_TARGET) $(WORK_DIR)/
+	cp $(CLI_AOT_TARGET) $(WORK_DIR)/$(CLI_WASM_OUTPUT)
 
 	# copy web test related files
 	cp src/web_service/bench.py $(WORK_DIR)/web_bench.py
@@ -100,7 +103,7 @@ bench-remote-all: copy
 # --- 本地运行 ---
 bench-local-cli: build-cli
 	@echo "=> Running CLI benchmarks locally..."
-	cp $(CLI_WASM_TARGET) $(CLI_SRC_DIR)/${CLI_WASM_OUTPUT}
+	cp $(CLI_AOT_TARGET) $(CLI_SRC_DIR)/${CLI_WASM_OUTPUT}
 	cd $(CLI_SRC_DIR) && python bench.py
 	rm -f $(CLI_SRC_DIR)/${CLI_WASM_OUTPUT}
 
